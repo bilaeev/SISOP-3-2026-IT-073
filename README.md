@@ -583,3 +583,13 @@ if (p->has_weapon)
     printf("  Ultimate : %d\n",  calc_ultimate(calc_damage(p->xp, p->weapon_damage)));
 ```
 Client membaca data pemain langsung dari Shared Memory dan menghitung stats menggunakan formula dari arena.h.
+## revisi
+1. username duplikat  
+   <img width="346" height="157" alt="Screenshot 2026-05-04 003427" src="https://github.com/user-attachments/assets/e6d363fc-619a-4501-a856-b8890eccef65" />
+2. login dengan username yang belum register  
+   <img width="277" height="157" alt="Screenshot 2026-05-04 003437" src="https://github.com/user-attachments/assets/f9cf6f30-0d68-42c1-b350-6a830e6f51dd" />
+3. login dengan password salah  
+   <img width="235" height="153" alt="Screenshot 2026-05-04 003455" src="https://github.com/user-attachments/assets/824473ff-76e8-45a7-b59a-58b9809e7f6e" />
+
+
+   
