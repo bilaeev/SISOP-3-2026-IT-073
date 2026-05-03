@@ -198,3 +198,60 @@ pkt.type = MSG_RPC;
 snprintf(pkt.body, MAX_MSG, "%d", cmd);
 ```
 Mengirim perintah RPC ke server, mapping ke Modul
+
+## Output
+1. menjalankan server  
+   <img width="467" height="40" alt="Screenshot 2026-05-03 190855" src="https://github.com/user-attachments/assets/21b34da7-561b-44b3-bfb0-ae8adc3044a4" />  
+2. connect ke tiap client  
+   <img width="492" height="76" alt="Screenshot 2026-05-03 190956" src="https://github.com/user-attachments/assets/36dad913-d10f-4bde-bfb8-db4c93478e2d" />  
+3. error handling untuk pemanggilan navi apabila server mati  
+   <img width="444" height="57" alt="Screenshot 2026-05-03 191113" src="https://github.com/user-attachments/assets/ec3d1bb2-fddd-453d-8470-c0f57319e9c1" />  
+4. error handling apabila server sudah online tapi ada pemanggilan wired lagi di terminal lain  
+   <img width="500" height="75" alt="Screenshot 2026-05-03 191327" src="https://github.com/user-attachments/assets/314f0e3f-8b8e-458d-9bb3-72aa786ea8c2" />  
+5. mendapatkan pesan dari client lain yang aktif  
+   TERMINAL 1  
+   <img width="498" height="155" alt="Screenshot 2026-05-03 192709" src="https://github.com/user-attachments/assets/48071b60-d6e0-4d27-a0d5-2f1aae9a0caf" />  
+   TERMINAL 2  
+   <img width="500" height="75" alt="Screenshot 2026-05-03 191327" src="https://github.com/user-attachments/assets/49276999-8af3-4a36-92ba-d90935cbfbab" />  
+6. error handling apabila server mati  
+   TERMINAL CLIENT  
+   <img width="511" height="96" alt="Screenshot 2026-05-03 193021" src="https://github.com/user-attachments/assets/e6816be7-f327-4389-8548-f0bbcb6207bf" />  
+   TERMINAL SERVER  
+   <img width="456" height="82" alt="Screenshot 2026-05-03 193101" src="https://github.com/user-attachments/assets/df88cbcc-922c-4e40-950b-51cda9445da2" />
+7. client kirim pesan kosong (prompt muncul lagi, tidak crash, tidak dikirim)  
+   <img width="515" height="186" alt="Screenshot 2026-05-03 193359" src="https://github.com/user-attachments/assets/e18119eb-26e6-46b4-9a9d-77cecda8ae5a" />  
+8. salah satu client exit  
+   TERMINAL CLIENT YANG KELUAR SERVER  
+   <img width="439" height="40" alt="Screenshot 2026-05-03 193644" src="https://github.com/user-attachments/assets/c199fda2-ca46-41d6-be04-98a5f288640b" />
+   TERMINAL CLIENT LAIN  
+   <img width="343" height="23" alt="Screenshot 2026-05-03 193722" src="https://github.com/user-attachments/assets/c77d1158-db46-4366-87b8-985fb047627e" />
+9. nama duplikat ditolak dan langsung meminta input nama lain lagi  
+    <img width="602" height="97" alt="Screenshot 2026-05-03 193910" src="https://github.com/user-attachments/assets/af1b7b9d-a640-46e0-b31a-8723c8611ef7" />
+10. error handling enter nama kosong  
+    <img width="495" height="122" alt="Screenshot 2026-05-03 194024" src="https://github.com/user-attachments/assets/113d7834-b610-4685-b2e9-de95da0d2807" />
+11. password The Knights salah  
+    <img width="488" height="78" alt="Screenshot 2026-05-03 194118" src="https://github.com/user-attachments/assets/09fdfdb2-1fae-4476-9265-965c83f6a60c" />
+12. output name=The Knights  
+    <img width="620" height="422" alt="Screenshot 2026-05-03 194244" src="https://github.com/user-attachments/assets/91d305e2-f62e-46be-a1ae-c410f46c3a4f" />
+    command 3 membuat server mati, command 4 tidak memunculkan output apapun tetapi The Knights keluar dari server & server dan client lain tetap jalan
+13. error handling apabila input command The Knights selain 1,2,3,4  
+    <img width="318" height="220" alt="Screenshot 2026-05-03 194557" src="https://github.com/user-attachments/assets/f9ed3a30-d8d5-43c4-ac03-a7e58e76b778" />  
+14. isi history.log  
+    <img width="588" height="404" alt="Screenshot 2026-05-03 194719" src="https://github.com/user-attachments/assets/9b65e7cc-111b-498a-9b78-1100391b855c" />
+
+    
+
+    
+    
+
+
+
+
+
+ 
+
+
+
+
+   
+    
