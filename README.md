@@ -1,9 +1,12 @@
 ## Soal 1
 ## Penjelasan kode soal 1
 Ketiga file membentuk satu sistem client-server dengan protokol komunikasi yang sama.
-> protocol.h berfungsi sebagai definisi aturan komunikasi (protokol), berisi konstanta tipe pesan, RPC, dan struktur data Packet yang digunakan oleh server dan client.  
-> Wired.c adalah server yang menerima koneksi dari banyak client, mengelola data client, melakukan broadcast pesan, menjalankan RPC untuk admin, serta mencatat log.  
-> Navi.c adalah client yang terhubung ke server, mengirim pesan, menerima pesan secara asynchronous, serta menyediakan interface admin jika login sebagai “The Knights”.  
+> protocol.h berfungsi sebagai definisi aturan komunikasi (protokol), berisi konstanta tipe pesan, RPC, dan struktur data Packet yang digunakan oleh server dan client.
+
+> Wired.c adalah server yang menerima koneksi dari banyak client, mengelola data client, melakukan broadcast pesan, menjalankan RPC untuk admin, serta mencatat log.
+
+> Navi.c adalah client yang terhubung ke server, mengirim pesan, menerima pesan secara asynchronous, serta menyediakan interface admin jika login sebagai “The Knights”.
+
 > Semua komunikasi antara client dan server menggunakan socket dan dikirim dalam bentuk struct Packet. Ini merupakan implementasi message passing pada IPC (Modul 3).  
 ## Penjelasan protocol.h
 File ini berisi definisi protokol komunikasi.  
