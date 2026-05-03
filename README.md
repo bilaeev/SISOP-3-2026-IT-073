@@ -239,19 +239,347 @@ Mengirim perintah RPC ke server, mapping ke Modul
 14. isi history.log  
     <img width="588" height="404" alt="Screenshot 2026-05-03 194719" src="https://github.com/user-attachments/assets/9b65e7cc-111b-498a-9b78-1100391b855c" />
 
-    
+## Soal 2
+## Penjelasan kode soal 2
+Keempat file membentuk satu sistem client-server berbasis IPC untuk arena pertempuran real-time.
+> arena.h berfungsi sebagai header utama yang mendefinisikan seluruh konstanta, struct, key IPC, serta fungsi utilitas (calc_damage, calc_health, calc_ultimate, sem_lock, sem_unlock) yang digunakan bersama oleh server dan client.
 
-    
-    
+> orion.c adalah server yang menginisialisasi resource IPC (Shared Memory, Message Queue, Semaphore), mengelola data seluruh pemain, menangani matchmaking, battle real-time, pembelian senjata, serta menyimpan history pertempuran.
 
+> eternal.c adalah client yang terhubung ke server melalui IPC, menyediakan antarmuka main menu, login/register, battle real-time dengan thread asynchronous, shop senjata, profile, dan history pertempuran.
 
+> Semua komunikasi antara client dan server menggunakan Message Queue (msgget, msgsnd, msgrcv) dan pertukaran data kondisi game menggunakan Shared Memory. Ini merupakan implementasi IPC (Modul 4).
 
+## Penjelasan arena.h
+File ini berisi seluruh definisi yang digunakan bersama oleh orion.c dan eternal.c.  
+Bagian IPC Keys:
+```c
+#define SHM_KEY     0x00001234
+#define MSGQ_KEY    0x00005678
+#define SEM_KEY     0x00009012
+```
+Digunakan untuk membuat dan mengakses resource IPC yang sama antara server dan client.  
+Konstanta game:
+```c
+#define BASE_DAMAGE     10
+#define BASE_HEALTH     100
+#define BASE_GOLD       150
+#define BASE_LEVEL      1
+#define BASE_XP         0
+#define XP_WIN          50
+#define XP_LOSE         15
+#define GOLD_WIN        120
+#define GOLD_LOSE       30
+#define XP_PER_LEVEL    100
+#define MATCHMAKING_TIMEOUT 35
+#define ATTACK_COOLDOWN     1
+```
+Mendefinisikan semua nilai default dan aturan game secara terpusat.  
+Tipe pesan untuk Message Queue:
+```c
+#define MSG_REGISTER    1
+#define MSG_LOGIN       2
+#define MSG_LOGOUT      3
+#define MSG_MATCHMAKE   4
+#define MSG_ATTACK      5
+#define MSG_ULTIMATE    6
+#define MSG_BUY_WEAPON  7
+#define MSG_HISTORY     8
+#define MSG_CANCEL_MATCH  11
+```
+Digunakan sebagai mtype pada Message Queue untuk membedakan jenis permintaan dari client ke server.  
+Status pemain:
+```c
+#define STATUS_OFFLINE      0
+#define STATUS_ONLINE       1
+#define STATUS_MATCHMAKING  2
+#define STATUS_BATTLE       3
+```
+Melacak kondisi setiap pemain agar server dapat mengelola matchmaking dan battle dengan benar.  
+Struct Weapon dan data senjata:
+```c
+typedef struct {
+    char name[MAX_NAME_LEN];
+    int  bonus_damage;
+    int  price;
+} Weapon;
 
+static const Weapon WEAPONS[] = {
+    {"Iron Sword",   10,  50},
+    {"Steel Blade",  25, 100},
+    {"Flame Axe",    45, 200},
+    {"Thunder Bow",  70, 350},
+    {"Shadow Dagger",100, 500},
+};
+```
+Mendefinisikan 5 senjata yang tersedia di armory beserta harga dan bonus damage-nya.  
+Struct Player:
+```c
+typedef struct {
+    char username[MAX_NAME_LEN];
+    char password[MAX_PASS_LEN];
+    int  gold;
+    int  level;
+    int  xp;
+    int  status;
+    int  weapon_damage;
+    int  has_weapon;
+    int  battle_opponent_idx;
+    char history[MAX_HISTORY][MAX_LOG_LEN];
+    int  history_count;
+} Player;
+```
+Menyimpan seluruh data persistent pemain di Shared Memory sehingga data tetap ada selama server berjalan.  
+Struct SharedData:
+```c
+typedef struct {
+    Player  players[MAX_PLAYERS];
+    int     player_count;
+    char    battle_logs[MAX_PLAYERS][BATTLE_LOGS][MAX_LOG_LEN];
+    int     battle_log_count[MAX_PLAYERS];
+    int     hp[MAX_PLAYERS];
+    int     in_battle[MAX_PLAYERS];
+    time_t  last_attack[MAX_PLAYERS];
+} SharedData;
+```
+Blok utama Shared Memory yang diakses langsung oleh server dan client untuk membaca kondisi game secara real-time.  
+Struct Message untuk Message Queue:
+```c
+typedef struct {
+    long mtype;
+    char sender[MAX_NAME_LEN];
+    char target[MAX_NAME_LEN];
+    char payload[256];
+    int  ivalue;
+    int  client_pid;
+} Message;
+```
+Digunakan dalam semua komunikasi antar proses. Field mtype menentukan routing pesan, client_pid digunakan sebagai reply address unik ke tiap client.  
+Semaphore helper:
+```c
+static inline void sem_lock(int semid) {
+    struct sembuf sb = {0, -1, SEM_UNDO};
+    semop(semid, &sb, 1);
+}
+static inline void sem_unlock(int semid) {
+    struct sembuf sb = {0, 1, SEM_UNDO};
+    semop(semid, &sb, 1);
+}
+```
+Digunakan untuk melindungi akses ke Shared Memory dari race condition ketika banyak client mengakses data secara bersamaan.  
+Formula utilitas:
+```c
+static inline int calc_damage(int xp, int weapon_bonus) {
+    return BASE_DAMAGE + (xp / 50) + weapon_bonus;
+}
+static inline int calc_health(int xp) {
+    return BASE_HEALTH + (xp / 10);
+}
+static inline int calc_ultimate(int total_damage) {
+    return total_damage * 3;
+}
+```
+Formula damage, health, dan ultimate dipusatkan di sini agar konsisten digunakan oleh server saat menghitung hasil serangan.
 
- 
+## Penjelasan orion.c (Server)
+File ini adalah server utama yang mengelola seluruh logika game berbasis IPC.  
+Inisialisasi IPC:
+```c
+shmid = shmget(SHM_KEY, sizeof(SharedData), IPC_CREAT | 0666);
+shm = (SharedData *)shmat(shmid, NULL, 0);
+msgqid = msgget(MSGQ_KEY, IPC_CREAT | 0666);
+semid = semget(SEM_KEY, 1, IPC_CREAT | 0666);
+semctl(semid, 0, SETVAL, 1);
+```
+Server membuat Shared Memory, Message Queue, dan Semaphore saat pertama kali dijalankan. Client kemudian mengakses resource yang sama menggunakan key yang identik.  
+Main loop server:
+```c
+while (running) {
+    if (msgrcv(msgqid, &req, sizeof(req) - sizeof(long), 0, 0) < 0) { ... }
+    switch (req.mtype) {
+        case MSG_REGISTER:     handle_register(&req);     break;
+        case MSG_LOGIN:        handle_login(&req);        break;
+        case MSG_LOGOUT:       handle_logout(&req);       break;
+        case MSG_MATCHMAKE:    handle_matchmake(&req);    break;
+        case MSG_ATTACK:       handle_attack(&req);       break;
+        case MSG_ULTIMATE:     handle_ultimate(&req);     break;
+        case MSG_BUY_WEAPON:   handle_buy_weapon(&req);   break;
+        case MSG_HISTORY:      handle_history(&req);      break;
+    }
+}
+```
+Server memblokir di msgrcv menunggu pesan masuk dari client manapun, lalu mendispatch ke handler yang sesuai berdasarkan tipe pesan.  
+Register dan Login (Persistent Data – Modul 4):
+```c
+int idx = shm->player_count++;
+Player *p = &shm->players[idx];
+strncpy(p->username, req->sender,  MAX_NAME_LEN - 1);
+strncpy(p->password, req->payload, MAX_PASS_LEN  - 1);
+p->gold  = BASE_GOLD;
+p->level = BASE_LEVEL;
+p->xp    = BASE_XP;
+```
+Data pemain disimpan langsung di Shared Memory sehingga persistent selama server berjalan. Username dijamin unik melalui pengecekan find_player sebelum registrasi.  
+Proteksi Race Condition (Semaphore – Modul 4):
+```c
+sem_lock(semid);
+// akses dan modifikasi SharedData
+sem_unlock(semid);
+```
+Setiap handler membungkus akses ke Shared Memory dengan sem_lock dan sem_unlock untuk mencegah race condition saat banyak client beroperasi bersamaan.  
+Matchmaking:
+```c
+shm->players[idx].status = STATUS_MATCHMAKING;
+int opp = -1;
+for (int i = 0; i < shm->player_count; i++) {
+    if (i == idx) continue;
+    if (shm->players[i].status == STATUS_MATCHMAKING) { opp = i; break; }
+}
+```
+Server mencari pemain lain yang sedang dalam status matchmaking. Jika ditemukan, keduanya langsung dipasangkan dan status diubah ke STATUS_BATTLE.  
+Matchmaking Watchdog Thread:
+```c
+pthread_create(&wd_tid, NULL, matchmaking_watchdog, NULL);
+pthread_detach(wd_tid);
+```
+Thread background yang berjalan setiap 1 detik untuk mengecek pemain yang sudah menunggu lebih dari MATCHMAKING_TIMEOUT (35 detik), kemudian mempertemukannya dengan bot BOT_Golem secara otomatis.  
+Logika Battle Real-Time:
+```c
+static void do_attack_logic(int attacker_idx, int defender_idx, int is_ultimate, long resp_type) {
+    time_t now = time(NULL);
+    if (now - shm->last_attack[attacker_idx] < ATTACK_COOLDOWN) {
+        send_response(resp_type, "COOLDOWN", 0);
+        return;
+    }
+    int dmg = calc_damage(atk->xp, atk->weapon_damage);
+    if (is_ultimate) dmg = calc_ultimate(dmg);
+    shm->hp[defender_idx] -= dmg;
+}
+```
+Sistem battle tidak menggunakan turn-based, setiap pemain dapat menyerang kapan saja dengan cooldown 1 detik. Ultimate hanya bisa dipakai jika pemain memiliki senjata.  
+Battle End dan Update Stats:
+```c
+atk->xp   += XP_WIN;
+atk->gold += GOLD_WIN;
+def->xp   += XP_LOSE;
+def->gold += GOLD_LOSE;
+atk->level = 1 + atk->xp / XP_PER_LEVEL;
+def->level = 1 + def->xp / XP_PER_LEVEL;
+```
+Ketika HP defender mencapai 0, server otomatis mengupdate XP, gold, dan level kedua pemain sesuai formula, lalu mengirim notifikasi BATTLE_END ke masing-masing client.  
+History pertempuran:
+```c
+snprintf(hist, sizeof(hist), "WIN vs %s | +%d XP +%d Gold", def->username, XP_WIN, GOLD_WIN);
+add_history(attacker_idx, hist);
+snprintf(hist, sizeof(hist), "LOSE vs %s | +%d XP +%d Gold", atk->username, XP_LOSE, GOLD_LOSE);
+add_history(defender_idx, hist);
+```
+Hasil setiap pertempuran dicatat di array history dalam struct Player di Shared Memory, tersimpan selama server aktif.  
+Pembelian senjata:
+```c
+p->gold -= WEAPONS[wid].price;
+if (WEAPONS[wid].bonus_damage > p->weapon_damage)
+    p->weapon_damage = WEAPONS[wid].bonus_damage;
+p->has_weapon = 1;
+```
+Pemain otomatis menggunakan senjata dengan bonus damage terbesar. Weapon dengan bonus lebih rendah tidak akan menggantikan senjata yang sudah dimiliki.
 
+## Penjelasan eternal.c (Client)
+Client digunakan untuk berkomunikasi dengan server melalui IPC dan menyediakan antarmuka interaktif bagi pemain.  
+Koneksi ke IPC Server:
+```c
+msgqid = msgget(MSGQ_KEY, 0666);
+shmid = shmget(SHM_KEY, sizeof(SharedData), 0666);
+shm = (SharedData *)shmat(shmid, NULL, 0);
+semid = semget(SEM_KEY, 1, 0666);
+```
+Client mengakses resource IPC yang sudah dibuat server menggunakan key yang sama. Jika server belum berjalan, client langsung keluar dengan pesan error.  
+Fungsi send dan receive:
+```c
+void send_to_server(long mtype, const char *sender, const char *target,
+                    const char *payload, int ival) {
+    Message m;
+    memset(&m, 0, sizeof(m));
+    m.mtype      = mtype;
+    m.client_pid = (int)getpid();
+    if (sender)  strncpy(m.sender,  sender,  MAX_NAME_LEN - 1);
+    if (payload) strncpy(m.payload, payload, sizeof(m.payload) - 1);
+    m.ivalue = ival;
+    msgsnd(msgqid, &m, sizeof(m) - sizeof(long), 0);
+}
 
+int recv_from_server(Message *out, long type, int nowait) {
+    int flags = nowait ? IPC_NOWAIT : 0;
+    ssize_t r = msgrcv(msgqid, out, sizeof(*out) - sizeof(long), type, flags);
+    return (int)r;
+}
+```
+Semua komunikasi dengan server dikemas dalam dua fungsi ini. Client menggunakan PID-nya sendiri (getpid()) sebagai mtype reply sehingga setiap client hanya membaca response yang ditujukan untuknya.  
+Register dan Login:
+```c
+send_to_server(MSG_REGISTER, uname, NULL, pass, 0);
+Message resp;
+recv_from_server(&resp, (long)getpid(), 0);
+printf("\n  %s\n", resp.payload);
+```
+Client mengirim username dan password ke server, lalu menunggu response. Jika login berhasil (resp.ivalue == 1), client masuk ke game_menu().  
+Thread Battle Asynchronous (Multithreading – Modul 4):
+```c
+pthread_create(&opp_tid, NULL, battle_opponent_thread, targ);
+```
+Saat battle dimulai, client membuat thread terpisah untuk terus memantau serangan dari lawan secara asynchronous, sehingga pemain tetap bisa menyerang tanpa harus menunggu giliran.  
+Receiver thread battle:
+```c
+void *battle_opponent_thread(void *arg) {
+    while (battle_running) {
+        if (recv_from_server(&m, a->my_type, 1) > 0) {
+            if (strncmp(m.payload, "BATTLE_END:", 11) == 0) {
+                battle_ended = 1; battle_running = 0;
+            } else if (strncmp(m.payload, "ATK:", 4) == 0) {
+                printf("\r  [OPP ATTACKS for %d!] Your HP: %d\n", dmg, my_hp);
+            }
+        }
+        usleep(100000);
+    }
+}
+```
+Thread ini membaca pesan dari server setiap 100ms menggunakan IPC_NOWAIT agar tidak memblokir input pemain.  
+Kontrol keyboard non-blocking saat battle:
+```c
+disable_echo();
+fcntl(STDIN_FILENO, F_SETFL, flags_orig | O_NONBLOCK);
 
-
-   
-    
+char key = 0;
+int rd = read(STDIN_FILENO, &key, 1);
+if (rd > 0) {
+    if (key == 'a') send_to_server(MSG_ATTACK, ...);
+    else if (key == 'u') send_to_server(MSG_ULTIMATE, ...);
+    else if (key == 'q') battle_running = 0;
+}
+```
+Input keyboard diset non-blocking dan echo dimatikan agar tombol 'a', 'u', 'q' langsung diproses tanpa harus menekan Enter, sesuai sistem battle real-time.  
+Tampilan HP real-time dan battle log:
+```c
+printf("\r  HP [ You: %-3d | %s: %-3d ]  (a=attack, u=ultimate, q=quit)  ",
+       shm->hp[my_idx], opp_name, opp_idx >= 0 ? shm->hp[opp_idx] : 0);
+print_battle_logs(my_idx);
+printf("\033[%dA", BATTLE_LOGS + 2);
+```
+Client membaca HP langsung dari Shared Memory setiap detik dan menampilkan 5 log battle terakhir secara in-place menggunakan ANSI escape code untuk efek real-time.  
+Shop (Armory):
+```c
+send_to_server(MSG_BUY_WEAPON, current_user, NULL, "", c - 1);
+Message resp;
+recv_from_server(&resp, (long)getpid(), 0);
+printf("\n  %s\n", resp.payload);
+```
+Client mengirim index senjata yang dipilih ke server, server memvalidasi gold dan memproses pembelian, lalu mengirim konfirmasi kembali ke client.  
+Profile:
+```c
+Player *p = &shm->players[my_idx];
+printf("  Damage   : %d\n",  calc_damage(p->xp, p->weapon_damage));
+printf("  Max HP   : %d\n",  calc_health(p->xp));
+if (p->has_weapon)
+    printf("  Ultimate : %d\n",  calc_ultimate(calc_damage(p->xp, p->weapon_damage)));
+```
+Client membaca data pemain langsung dari Shared Memory dan menghitung stats menggunakan formula dari arena.h.
